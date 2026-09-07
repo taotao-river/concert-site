@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>全球演唱会地图 · 原型</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    body { background: #0b0d12; color: #fff; overflow: hidden; }
+    #map { position: absolute; inset: 0; background: #0b0d12; }
+    #header {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 1000;
+      padding: 18px 24px;
+      background: linear-gradient(180deg, rgba(11,13,18,0.95), rgba(11,13,18,0));
+      pointer-events: none;
+    }
+    #header h1 { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+    #header .sub { margin-top: 6px; font-size: 13px; color: #9ca3af; }
+    #header .count { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #e5e7eb; font-size: 12px; }
+    #legend {
+      position: absolute; right: 20px; bottom: 28px; z-index: 1000;
+      padding: 14px 16px; border-radius: 12px;
+      background: rgba(20,23,31,0.88); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.08); font-size: 13px;
+    }
+    #legend .title { font-size: 12px; color: #9ca3af; margin-bottom: 6px; }
+    #legend .row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+    #legend .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    #filter { position: absolute; left: 24px; bottom: 28px; z-index: 1000; display: flex; gap: 8px; flex-wrap: wrap; max-width: 70vw; }
+    #filter button {
+      padding: 9px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(20,23,31,0.88); color: #e5e7eb; font-size: 13px; cursor: pointer;
+      backdrop-filter: blur(8px); transition: all 0.2s;
+    }
+    #filter button:hover { border-color: rgba(255,255,255,0.5); }
+    #filter button.active { background: #fff; color: #111; border-color: #fff; font-weight: 600; }
+    .artist-marker {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+      border: 2px solid rgba(255,255,255,0.9);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      cursor: pointer;
+    }
+    .leaflet-tooltip {
+      background: #14171f; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px; font-size: 12px; padding: 6px 10px;
+    }
+    .leaflet-tooltip-top:before { border-top-color: #14171f; }
+    .leaflet-popup-content-wrapper { background: #14171f; color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; }
+    .leaflet-popup-tip { background: #14171f; }
+    .leaflet-popup-content { margin: 14px 16px; font-size: 14px; line-height: 1.6; }
+    .pop-artist { font-weight: 700; font-size: 15px; }
+    .pop-date { color: #ffd700; margin-top: 2px; }
+    .pop-city { color: #9ca3af; }
+    .pop-link { display: inline-block; margin-top: 8px; color: #60a5fa; text-decoration: none; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>🌍 全球演唱会地图</h1>
+    <div class="sub">近 30 天 · 按歌手区分 · 谁在哪个城市开演唱会</div>
+    <span class="count" id="count">正在加载…</span>
+  </div>
+  <div id="map"></div>
+  <div id="legend">
+    <div class="title">歌手图例</div>
+    <div class="row"><span class="dot" style="background:#ff4757"></span>The Weeknd</div>
+    <div class="row"><span class="dot" style="background:#d946ef"></span>Ariana Grande</div>
+    <div class="row"><span class="dot" style="background:#22c55e"></span>Ed Sheeran</div>
+  </div>
+  <div id="filter">
+    <button id="btnAll" class="active" onclick="toggleAll()">全部</button>
+    <button id="btnWeeknd" class="active" onclick="toggleArtist('The Weeknd')">The Weeknd</button>
+    <button id="btnAriana" class="active" onclick="toggleArtist('Ariana Grande')">Ariana Grande</button>
+    <button id="btnEd" class="active" onclick="toggleArtist('Ed Sheeran')">Ed Sheeran</button>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const artistStyle = {
+      'The Weeknd':   { color: '#ff4757', initial: 'TW' },
+      'Ariana Grande':{ color: '#d946ef', initial: 'AG' },
+      'Ed Sheeran':   { color: '#22c55e', initial: 'ES' }
+    };
+    const events = [
+      { artist: 'The Weeknd', city: '东京', country: '日本', lat: 35.68, lng: 139.69, date: '9月20日' },
+      { artist: 'The Weeknd', city: '雅加达', country: '印度尼西亚', lat: -6.20, lng: 106.85, date: '9月26-27日' },
+      { artist: 'The Weeknd', city: '新加坡', country: '新加坡', lat: 1.35, lng: 103.82, date: '10月2-3日' },
+      { artist: 'The Weeknd', city: '首尔', country: '韩国', lat: 37.57, lng: 126.98, date: '10月7-8日' },
+      { artist: 'The Weeknd', city: '曼谷', country: '泰国', lat: 13.76, lng: 100.50, date: '10月11日' },
+      { artist: 'The Weeknd', city: '香港', country: '中国香港', lat: 22.32, lng: 114.17, date: '待定' },
+      { artist: 'The Weeknd', city: '吉隆坡', country: '马来西亚', lat: 3.14, lng: 101.69, date: '11月4日' },
+      { artist: 'Ariana Grande', city: '奥克兰', country: '美国', lat: 37.80, lng: -122.27, date: '6月6-9日' },
+      { artist: 'Ariana Grande', city: '洛杉矶', country: '美国', lat: 34.05, lng: -118.24, date: '6月13日' },
+      { artist: 'Ariana Grande', city: '纽约', country: '美国', lat: 40.68, lng: -73.94, date: '7月18-19日' },
+      { artist: 'Ariana Grande', city: '芝加哥', country: '美国', lat: 41.90, lng: -87.60, date: '8月3-6日' },
+      { artist: 'Ed Sheeran', city: '芝加哥', country: '美国', lat: 41.86, lng: -87.66, date: '6月27日' },
+      { artist: 'Ed Sheeran', city: '多伦多', country: '加拿大', lat: 43.65, lng: -79.38, date: '8月20日' }
+    ];
+    const map = L.map('map', { zoomControl: true }).setView([22, 108], 3);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(map);
+    const markers = [];
+    function buildPopup(e) {
+      return '<div class="pop-artist">' + e.artist + '</div>' +
+             '<div class="pop-date">' + e.date + '</div>' +
+             '<div class="pop-city">' + e.city + ' · ' + e.country + '</div>' +
+             '<a class="pop-link" href="https://www.ticketmaster.com" target="_blank">查看官方购票 →</a>';
+    }
+    events.forEach(function(e) {
+      const s = artistStyle[e.artist];
+      const icon = L.divIcon({
+        className: '',
+        html: '<div class="artist-marker" style="background:' + s.color + '">' + s.initial + '</div>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      });
+      const m = L.marker([e.lat, e.lng], { icon: icon })
+        .addTo(map)
+        .bindTooltip(e.artist + ' · ' + e.city + ' · ' + e.date, { direction: 'top', offset: [0, -6] })
+        .bindPopup(buildPopup(e));
+      markers.push({ marker: m, artist: e.artist });
+    });
+    document.getElementById('count').textContent = '共 ' + events.length + ' 场 · ' + Object.keys(artistStyle).length + ' 位歌手';
+    function refreshCount() {
+      const visible = markers.filter(function(x){ return map.hasLayer(x.marker); }).length;
+      document.getElementById('count').textContent = '显示 ' + visible + ' 场 · 共 ' + events.length + ' 场 · ' + Object.keys(artistStyle).length + ' 位歌手';
+    }
+    function setArtist(mode, artist) {
+      markers.forEach(function(item) {
+        if (item.artist === artist) {
+          if (mode) { item.marker.addTo(map); } else { map.removeLayer(item.marker); }
+        }
+      });
+      refreshCount();
+    }
+    function toggleArtist(artist) {
+      const idMap = { 'The Weeknd':'btnWeeknd', 'Ariana Grande':'btnAriana', 'Ed Sheeran':'btnEd' };
+      const btn = document.getElementById(idMap[artist]);
+      const next = !btn.classList.contains('active');
+      btn.classList.toggle('active', next);
+      setArtist(next, artist);
+    }
+    function toggleAll() {
+      const btn = document.getElementById('btnAll');
+      const next = !btn.classList.contains('active');
+      btn.classList.toggle('active', next);
+      markers.forEach(function(item) {
+        if (next) { item.marker.addTo(map); } else { map.removeLayer(item.marker); }
+      });
+      refreshCount();
+    }
+  </script>
+</body>
+</html>
