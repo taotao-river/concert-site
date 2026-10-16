@@ -213,9 +213,10 @@
 # Python 脚本语法与导入检查
 python3 -m py_compile scripts/fetch_tours.py
 
-# 文档内部链接是否指向真实存在的文件
-grep -oh '](\([^)]*\.md\))' *.md | sed 's/](\(.*\))/\1/' | sort -u | while read f; do
-  [ -f "$f" ] || echo "断链: $f"
+# 文档内部链接是否指向真实存在的文件（相对各文件所在目录解析）
+grep -rno '](\([^)]*\.md\))' --include=*.md . | sed 's|/\./|/|' | while IFS=: read -r src _ link; do
+  target=$(printf '%s' "$link" | sed 's/^](\(.*\))$/\1/')
+  [ -f "$(dirname "$src")/$target" ] || echo "断链: $src -> $target"
 done
 
 # 检查是否出现被废止的算式（点击直接当下单）
